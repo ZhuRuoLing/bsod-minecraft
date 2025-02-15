@@ -4,25 +4,25 @@
   "version": "${version}",
 
   "name": "${name}",
-  "description": "Template for my fabric mods",
+  "description": "",
   "authors": [
-    "Fallen_Breath"
+    "ZhuRuoLing"
   ],
   "contact": {
     "homepage": "https://modrinth.com",
-    "sources": "https://github.com/Fallen-Breath/fabric-mod-template"
+    "sources": "https://github.com/ZhuRuoLing/bsod-minecraft"
   },
 
-  "icon": "assets/template_mod/icon.png",
+  "icon": "assets/bsodmc/icon.png",
 
-  "environment": "*",
+  "environment": "client",
   "entrypoints": {
     "main": [
-      "me.fallenbreath.template_mod.TemplateMod"
+      "icu.takeneko.bsodmc.BSODMinecraft"
     ]
   },
   "mixins": [
-    "template_mod.mixins.json"
+    "bsodmc.mixins.json"
   ],
 
   "depends": {
