@@ -29,11 +29,12 @@ import com.mojang.blaze3d.vertex.Tesselator;
 import net.minecraft.CrashReport;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
-import net.minecraft.util.FastColor;
+import net.minecraft.client.renderer.MultiBufferSource;
 import org.joml.Matrix4f;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.opengl.GL11;
 
+import java.awt.*;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -41,8 +42,8 @@ import java.util.List;
 import static net.minecraft.client.Minecraft.ON_OSX;
 
 public class BSODRenderer {
-    public static final String CRYING_FACE = ":(";
-    public static final String HAPPY_FACE = ":)";
+    public static final String CRYING_FACE = ":(  #@!@# Game crashed!";
+    public static final String HAPPY_FACE = ":)  #@!@# Game crashed!";
 
     private static boolean ACTIVE = false;
     private static BSODRenderer INSTANCE;
@@ -57,21 +58,36 @@ public class BSODRenderer {
     private final Font font;
     private final List<String> stackTraceLines = new ArrayList<>();
     private final boolean triggeredCrash;
+    private float guiScale = 2;
+    private int textHue = 1;
+    private int hueIncrement = 1;
+    //#if MC >= 12100
+    //$$ private final com.mojang.blaze3d.vertex.ByteBufferBuilder builder = new com.mojang.blaze3d.vertex.ByteBufferBuilder(65536);
+    //#endif
 
 
     private BSODRenderer(Window window, CrashReport crashReport) {
         this.window = window;
         this.crashReport = crashReport;
         int clearColor = Util.propertyIntOrDefault("bsod.bgColor", Util.findBSODColor());
-        backgroundColorR = FastColor.ARGB32.red(clearColor) / 255f;
-        backgroundColorG = FastColor.ARGB32.green(clearColor) / 255f;
-        backgroundColorB = FastColor.ARGB32.blue(clearColor) / 255f;
+        backgroundColorR = Util.argbRed(clearColor) / 255f;
+        backgroundColorG = Util.argbGreen(clearColor) / 255f;
+        backgroundColorB = Util.argbBlue(clearColor) / 255f;
         System.out.println("clearColor = " + clearColor);
         frameBuffer = new MainTarget(window.getWidth(), window.getHeight());
         frameBuffer.setClearColor(backgroundColorR, backgroundColorG, backgroundColorB, 1f);
+        //#if MC >= 12103
+        //$$frameBuffer.clear();
+        //#else
         frameBuffer.clear(true);
+        //#endif
+        this.resize();
         triggeredCrash = crashReport.getTitle().equals("Manually triggered debug crash");
-        stackTraceLines.addAll(Arrays.stream(crashReport.getExceptionMessage().split("\n")).toList());
+        stackTraceLines.addAll(
+            Arrays.stream(crashReport.getExceptionMessage().split("\n"))
+                .map(it -> it.replace("\r", "").replace("\t", "  "))
+                .toList()
+        );
 
         if (Minecraft.getInstance() == null) {
             font = null;
@@ -82,53 +98,117 @@ public class BSODRenderer {
         useMinecraftFont = font != null;
     }
 
-    private void renderFace(PoseStack poseStack) {
-        poseStack.pushPose();
-        poseStack.translate(10, 10, 0);
-        //poseStack.scale(10, 10, 10);
-        font.draw(poseStack, triggeredCrash ? HAPPY_FACE : CRYING_FACE, 0, 0, 0xffffffff);
-        poseStack.popPose();
+    private void drawText(PoseStack poseStack, String text, int color) {
+        //#if MC < 12100
+        MultiBufferSource.BufferSource bufferSource = MultiBufferSource.immediate(Tesselator.getInstance().getBuilder());
+        //#else
+        //$$MultiBufferSource.BufferSource bufferSource = MultiBufferSource.immediate(builder);
+        //#endif
+        font.drawInBatch(text, 0, 0, color, false, poseStack.last().pose(), bufferSource, Font.DisplayMode.NORMAL, 0, 15728880);
+        bufferSource.endBatch();
     }
 
     public void render(Tesselator tesselator, PoseStack poseStack) {
         Matrix4f projMat = new Matrix4f()
             .setOrtho(
                 0,
-                (float) window.getWidth(),
+                (float) window.getWidth() / guiScale,
+                (float) window.getHeight() / guiScale,
                 0,
-                (float) window.getHeight(),
-                0.1F,
+                -1000F,
                 1000f
             );
-
         RenderSystem.disableDepthTest();
         RenderSystem.depthFunc(GL11.GL_ALWAYS);
         RenderSystem.enableBlend();
         RenderSystem.disableCull();
-        RenderSystem.setProjectionMatrix(projMat);
+        RenderSystem.getModelViewMatrix().set(new Matrix4f());
+        RenderSystem.getProjectionMatrix().set(projMat);
         poseStack.pushPose();
         if (useMinecraftFont) {
-            renderFace(poseStack);
+            poseStack.pushPose();
+            poseStack.translate(10, 10, 10);
+
+            poseStack.pushPose();
+            poseStack.scale(4, 4, 4);
+            drawText(poseStack, triggeredCrash ? HAPPY_FACE : CRYING_FACE, 0xffffffff);
+
+            poseStack.popPose();
+
+            poseStack.translate(0, (font.lineHeight + 2) * 4, 0);
+            int importantColor = hsvToRgb(textHue / 512f, 1, 1);
+            drawText(
+                poseStack,
+                "When seeking help, please provide them with your crash-report file",
+                importantColor
+            );
+            poseStack.translate(0, font.lineHeight, 0);
+            drawText(
+                poseStack,
+                "instead of a screenshot of the window!",
+                importantColor
+            );
+
+            poseStack.translate(0, font.lineHeight, 0);
+            for (String line : stackTraceLines) {
+                poseStack.translate(0, font.lineHeight + 2, 0);
+                drawText(poseStack, line, 0xffffffff);
+            }
+
+            poseStack.popPose();
         }
         poseStack.popPose();
+    }
+
+    public static int hsvToRgb(float hue, float saturation, float value) {
+        Color color = Color.getHSBColor(hue, saturation, value);
+        int red = color.getRed();
+        int green = color.getGreen();
+        int blue = color.getBlue();
+
+        return Util.argbCompose(255, red, green, blue);
     }
 
     public void renderLoop() {
         ACTIVE = true;
         frameBuffer.unbindWrite();
+        GLFW.glfwSwapInterval(1);
         while (!GLFW.glfwWindowShouldClose(window.getWindow())) {
+            textHue += hueIncrement;
+            if (textHue == 512) hueIncrement = -1;
+            if (textHue == 0) hueIncrement = 1;
             Tesselator tesselator = Tesselator.getInstance();
             RenderSystem.clearColor(backgroundColorR, backgroundColorG, backgroundColorB, 1);
+            //#if MC >= 12103
+            //$$RenderSystem.clear(16640);
+            //#else
             RenderSystem.clear(16640, ON_OSX);
-            frameBuffer.bindWrite(true);
+            //#endif
             frameBuffer.setClearColor(backgroundColorR, backgroundColorG, backgroundColorB, 1);
+            //#if MC >= 12103
+            //$$frameBuffer.clear();
+            //#else
             frameBuffer.clear(ON_OSX);
+            //#endif
+            frameBuffer.bindWrite(true);
             this.render(tesselator, new PoseStack());
             frameBuffer.unbindWrite();
             frameBuffer.blitToScreen(this.window.getWidth(), this.window.getHeight());
+            //#if MC < 12100
             tesselator.getBuilder().clear();
+            //#else
+            //$$builder.clear();
+            //#endif
+            //#if MC >= 12103
+            //$$window.updateDisplay(null);
+            //#else
             window.updateDisplay();
+            //#endif
+
         }
+        //#if MC >= 12100
+        //$$builder.close();
+        //#endif
     }
 
     public static BSODRenderer createInstance(Window window, CrashReport crashReport) {
@@ -145,6 +225,13 @@ public class BSODRenderer {
     }
 
     public void resize() {
-        this.frameBuffer.resize(this.window.getWidth(), this.window.getHeight(), ON_OSX);
+        int width = this.window.getWidth();
+        int height = this.window.getHeight();
+        //#if MC >= 12103
+        //$$this.frameBuffer.resize(width, height);
+        //#else
+        this.frameBuffer.resize(width, height, ON_OSX);
+        //#endif
+        this.guiScale = this.window.calculateScale(2, true);
     }
 }

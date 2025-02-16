@@ -47,7 +47,14 @@ public abstract class MinecraftMixin {
     @Shadow @Final private Window window;
 
     @Inject(method = "crash", at = @At(value = "INVOKE", target = "Ljava/lang/System;exit(I)V"))
-    private static void onMinecraftCrashed(CrashReport crashReport, CallbackInfo ci) {
+    private static void onMinecraftCrashed(
+        //#if MC >= 12000
+        //$$net.minecraft.client.Minecraft minecraft,
+        //$$java.io.File file,
+        //#endif
+        CrashReport crashReport,
+        CallbackInfo ci
+    ) {
         Window window = getInstance().getWindow();
         if (window == null) return;
         LOGGER.info("Entering BSOD render loop.");

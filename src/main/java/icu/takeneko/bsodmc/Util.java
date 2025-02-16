@@ -35,4 +35,20 @@ public class Util {
         //TODO: return GREEN when Minecraft snapshot version is active
         return ModConstants.BLUE;
     }
+
+    public static int argbRed(int i) {
+        return i >> 16 & 255;
+    }
+
+    public static int argbGreen(int i) {
+        return i >> 8 & 255;
+    }
+
+    public static int argbBlue(int i) {
+        return i & 255;
+    }
+
+    public static int argbCompose(int a, int r, int g, int b){
+        return a << 24 | r << 16 | g << 8 | b;
+    }
 }
